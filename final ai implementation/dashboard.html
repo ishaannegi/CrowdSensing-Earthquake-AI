@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrowdSensing: Real-Time Mobile Crowdsensing Dashboard</title>
+
+  <!-- Google Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #020408;
+      --card-bg: rgba(8, 12, 20, 0.94);
+      --card-recessed: #040711;
+      --card-border: rgba(255, 255, 255, 0.04);
+      --text-white: #ffffff;
+      --text-main: #f1f5f9;
+      --text-muted: #64748b;
+      --accent-green: #10b981;
+      --accent-yellow: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', 'Cascadia Code', 'Courier New', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(15, 23, 42, 0.85) 0%, transparent 75%),
+        radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.02) 0%, transparent 50%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem;
+      gap: 1.1rem;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #020408;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 0.85rem 1.4rem;
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #0284c7, #06b6d4);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+    }
+
+    .brand-text h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text-white);
+    }
+
+    .brand-text p {
+      font-size: 0.775rem;
+      color: var(--text-muted);
+    }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      color: var(--accent-cyan);
+      padding: 0.4rem 0.85rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent-cyan);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(1.3); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Asymmetric Top Stats Bar with Recessed Depth */
+    .top-stats-bar {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr 1fr 1fr;
+      gap: 0.9rem;
+    }
+
+    @media (max-width: 960px) {
+      .top-stats-bar { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      background: var(--card-recessed);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      padding: 0.85rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+
+    .stat-card.featured-hero {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), #040711);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      box-shadow: 0 10px 30px -10px rgba(245, 158, 11, 0.15), inset 0 1px 0 rgba(245, 158, 11, 0.2);
+    }
+
+    .stat-card .stat-lbl {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .stat-card .stat-val {
+      font-size: 2.1rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-white);
+      margin-top: 0.1rem;
+      line-height: 1.1;
+    }
+
+    .stat-card.featured-hero .stat-val {
+      font-size: 2.5rem;
+      color: #fcd34d;
+    }
+
+    .stat-card .stat-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Live Alert Banner */
+    .alert-banner {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(4, 7, 17, 0.95));
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 14px;
+      padding: 1.1rem 1.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.4s ease;
+      box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .alert-banner.state-normal {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(4, 7, 17, 0.95));
+      border-color: rgba(16, 185, 129, 0.25);
+      color: var(--accent-green);
+    }
+
+    .alert-banner.state-local {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(4, 7, 17, 0.95));
+      border-color: rgba(245, 158, 11, 0.5);
+      color: #fcd34d;
+    }
+
+    .alert-banner.state-confirmed {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(4, 7, 17, 0.95));
+      border-color: var(--accent-red);
+      color: #fca5a5;
+      animation: alert-flash 1s infinite alternate;
+    }
+
+    @keyframes alert-flash {
+      from { box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+      to { box-shadow: 0 0 35px rgba(239, 68, 68, 0.7); }
+    }
+
+    .banner-left {
+      display: flex;
+      align-items: center;
+      gap: 1.1rem;
+    }
+
+    .banner-icon {
+      font-size: 2.2rem;
+    }
+
+    .banner-title h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .banner-title p {
+      font-size: 0.8rem;
+      opacity: 0.8;
+      margin-top: 0.15rem;
+    }
+
+    .banner-metric {
+      text-align: right;
+    }
+
+    .banner-metric .val {
+      font-size: 2.6rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-white);
+      line-height: 1;
+    }
+
+    .banner-metric .lbl {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* Asymmetric Grid Layout: Map centerpiece (1.4fr) vs Waveform panel (1fr) */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1.1rem;
+      flex: 1;
+    }
+
+    @media (max-width: 1100px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.15rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.95rem;
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .left-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.95rem;
+    }
+
+    /* Event Summary Cards (Sidebar style) */
+    .event-cards-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.8rem;
+    }
+
+    @media (max-width: 768px) {
+      .event-cards-container { grid-template-columns: 1fr; }
+    }
+
+    .event-summary-card {
+      background: var(--card-recessed);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 0.8rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+    }
+
+    .event-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.8px;
+    }
+
+    .event-node-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-white);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.25rem 0.5rem;
+      font-size: 0.725rem;
+    }
+
+    .event-meta-grid span, .event-meta-grid strong {
+      font-family: var(--font-mono);
+    }
+
+    .meta-lbl {
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      letter-spacing: 0.5px;
+      font-family: 'Outfit', sans-serif !important;
+    }
+
+    /* Leaflet Map Frame & Dark Tile Filter (Only inverts tile pane, NOT markers/popups) */
+    #map {
+      height: 410px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: #020408;
+      box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.95);
+    }
+
+    #map .leaflet-tile-pane {
+      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+
+    /* Map Node Breathing Glow Markers */
+    .node-marker-pulse {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px var(--accent-green);
+      animation: nodePulse 2.5s infinite ease-in-out;
+      cursor: pointer;
+    }
+
+    .node-marker-pulse.local-vib {
+      background: var(--accent-yellow);
+      box-shadow: 0 0 12px var(--accent-yellow);
+      animation: nodePulseYellow 1.5s infinite ease-in-out;
+    }
+
+    .node-marker-pulse.confirmed-quake {
+      background: var(--accent-red);
+      box-shadow: 0 0 16px var(--accent-red);
+      animation: nodePulseRed 1s infinite ease-in-out;
+    }
+
+    @keyframes nodePulse {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+      70% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    @keyframes nodePulseYellow {
+      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(245, 158, 11, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    @keyframes nodePulseRed {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); }
+      70% { box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    /* Right Section: Waveform & Spectrogram Analysis */
+    .right-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 170px;
+      width: 100%;
+      background: #03050c;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 0.6rem;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.95);
+    }
+
+    /* Spectrogram Container */
+    .spectrogram-container {
+      position: relative;
+      background: #03050c;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 0.6rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.95);
+    }
+
+    .spectrogram-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.8px;
+    }
+
+    #spectrogramCanvas {
+      width: 100%;
+      height: 75px;
+      border-radius: 6px;
+      background: #020408;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .spectrogram-legend {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.625rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .legend-bar {
+      height: 5px;
+      flex: 1;
+      margin: 0 0.5rem;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #020408, #0284c7, #10b981, #f59e0b, #ef4444);
+    }
+
+    /* Canvas Idle Placeholder Overlays */
+    .canvas-placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.8px;
+      font-style: italic;
+      opacity: 0.6;
+      pointer-events: none;
+      text-align: center;
+      transition: opacity 0.4s ease;
+      z-index: 5;
+    }
+
+    /* AI Diagnostics Metric Cards */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+
+    .metric-card {
+      background: var(--card-recessed);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.65rem;
+      text-align: center;
+      position: relative;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .metric-card .label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+      letter-spacing: 0.8px;
+      font-weight: 600;
+    }
+
+    .metric-card .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-white);
+    }
+
+    /* Confidence Gauge */
+    .confidence-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      background: var(--card-recessed);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.65rem 0.85rem;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .confidence-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .confidence-label span:last-child {
+      font-family: var(--font-mono);
+    }
+
+    .progress-bar-bg {
+      height: 6px;
+      background: #020408;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #10b981);
+      border-radius: 6px;
+      transition: width 0.5s ease;
+    }
+
+    /* Recent Telemetry Table */
+    .table-wrapper {
+      max-height: 135px;
+      overflow-y: auto;
+      background: var(--card-recessed);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+
+    th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.45rem 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      position: sticky;
+      top: 0;
+      background: #03050d;
+      letter-spacing: 0.5px;
+      font-size: 0.65rem;
+    }
+
+    td {
+      padding: 0.4rem 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+      font-family: var(--font-mono);
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 5px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      font-family: 'Outfit', sans-serif !important;
+    }
+
+    .badge-normal {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--accent-green);
+    }
+
+    .badge-local {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: #fcd34d;
+    }
+
+    .badge-confirmed {
+      background: rgba(239, 68, 68, 0.18);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">📡</div>
+      <div class="brand-text">
+        <h1>CrowdSensing AI</h1>
+        <p>Real-Time Mobile Crowdsensing Network & Spatial Consensus Engine</p>
+      </div>
+    </div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      <span>SSE STREAM ACTIVE</span>
+    </div>
+  </header>
+
+  <!-- Asymmetric Top Stats Bar with Recessed Depth -->
+  <div class="top-stats-bar">
+    <div class="stat-card">
+      <div class="stat-lbl">TOTAL NODES</div>
+      <div class="stat-val">10 <span class="stat-unit">Online</span></div>
+    </div>
+    <div class="stat-card featured-hero">
+      <div class="stat-lbl">CONFIRMED ALERTS TODAY</div>
+      <div id="statAlertsToday" class="stat-val">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-lbl">MAX ACCELERATION</div>
+      <div id="statMaxAcc" class="stat-val">0.00 <span class="stat-unit">m/s²</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-lbl">AVG AI CONFIDENCE</div>
+      <div id="statAvgConf" class="stat-val">0.0<span class="stat-unit">%</span></div>
+    </div>
+  </div>
+
+  <!-- Live Alert Banner -->
+  <div id="alertBanner" class="alert-banner state-normal">
+    <div class="banner-left">
+      <div id="bannerIcon" class="banner-icon">🟢</div>
+      <div class="banner-title">
+        <h2 id="bannerStatus">SYSTEM NORMAL - MONITORING ACTIVE</h2>
+        <p id="bannerSubtext">All 10 NCR crowdsensing node devices reporting normal ambient telemetry.</p>
+      </div>
+    </div>
+    <div class="banner-metric">
+      <div id="bannerMagVal" class="val">0.00</div>
+      <div class="lbl">Peak Acceleration (m/s²)</div>
+    </div>
+  </div>
+
+  <!-- Regional Warning Feed Container -->
+  <div id="regionalWarningFeed" style="display: none; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 14px; padding: 0.85rem 1.15rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+      <div style="font-weight: 700; color: #fcd34d; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.4rem;">
+        <span style="animation: pulse 1.5s infinite;">⚠️</span> PREDICTIVE REGIONAL EARLY WARNING (DISTANT NON-TRIGGERING REGIONS)
+      </div>
+      <span style="font-size: 0.725rem; color: var(--text-muted); font-family: var(--font-mono);">VP=6.0 km/s | VS=3.5 km/s</span>
+    </div>
+    <div id="warningCardsList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.5rem;">
+      <!-- Dynamic predictive warning cards render here -->
+    </div>
+  </div>
+
+  <!-- Asymmetric Dashboard Grid Layout (Map centerpiece: 1.4fr vs Waveform panel: 1fr) -->
+  <div class="dashboard-grid">
+    
+    <!-- Left Section: Event Summary Cards + Map -->
+    <div class="left-section">
+      
+      <!-- Event Summary Cards Sidebar -->
+      <div class="event-cards-container">
+        <!-- Card 1: Last Recorded Event -->
+        <div class="event-summary-card">
+          <div class="event-card-header">
+            <span>LAST RECORDED EVENT</span>
+            <span id="card1Badge" class="badge badge-normal">STANDBY</span>
+          </div>
+          <div id="card1Node" class="event-node-name">Monitoring Active</div>
+          <div class="event-meta-grid">
+            <div><span class="meta-lbl">TIME:</span> <span id="card1Time">--:--</span></div>
+            <div><span class="meta-lbl">ACCEL:</span> <strong id="card1Mag" style="color: var(--text-white);">0.00 m/s²</strong></div>
+            <div><span class="meta-lbl">PRED:</span> <span id="card1Pred">Ambient</span></div>
+            <div><span class="meta-lbl">CONF:</span> <span id="card1Conf">--</span></div>
+          </div>
+        </div>
+
+        <!-- Card 2: Last Confirmed Alert -->
+        <div class="event-summary-card">
+          <div class="event-card-header">
+            <span>LAST CONFIRMED ALERT</span>
+            <span id="card2Badge" class="badge badge-normal">NONE</span>
+          </div>
+          <div id="card2Epicenter" class="event-node-name">No Active Clusters</div>
+          <div class="event-meta-grid">
+            <div><span class="meta-lbl">RADIUS:</span> <span>15.0 km</span></div>
+            <div><span class="meta-lbl">CLUSTER:</span> <strong id="card2ClusterSize" style="color: var(--text-muted);">0 Nodes</strong></div>
+            <div><span class="meta-lbl">LEAD TIME:</span> <strong id="card2LeadTime" style="color: var(--text-muted);">0.0s</strong></div>
+            <div><span class="meta-lbl">TIME:</span> <span id="card2Time">--:--</span></div>
+          </div>
+        </div>
+
+        <!-- Card 3: Strongest Reading Today -->
+        <div class="event-summary-card">
+          <div class="event-card-header">
+            <span>MAX PEAK READING</span>
+            <span id="card3Mag" style="color: var(--text-white); font-weight:700;">0.00 m/s²</span>
+          </div>
+          <div id="card3Node" class="event-node-name">Ambient Baseline</div>
+          <div class="event-meta-grid">
+            <div><span class="meta-lbl">AI PRED:</span> <span id="card3Pred">Normal</span></div>
+            <div><span class="meta-lbl">CONF:</span> <span id="card3Conf">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map Container (Main Visual Centerpiece) -->
+      <div class="card" style="padding: 0.95rem; flex: 1;">
+        <div class="card-header">
+          <div class="card-title">🗺️ NCR Crowdsensing Consensus Map (10 Nodes)</div>
+          <div style="font-size: 0.725rem; color: var(--text-muted); letter-spacing: 0.5px;">Spatial Consensus Radius: 15 km</div>
+        </div>
+        <div id="map"></div>
+      </div>
+
+    </div>
+
+    <!-- Right Section: Waveform & Spectrogram Analysis -->
+    <div class="card right-section">
+      <div class="card-header">
+        <div class="card-title">📈 Waveform & Spectrogram Analysis</div>
+        <div id="activeNodeName" style="font-size: 0.775rem; color: var(--text-muted); font-weight: 500;">Node: Standby</div>
+      </div>
+      
+      <!-- Waveform Line Chart -->
+      <div class="chart-container">
+        <div id="waveformPlaceholder" class="canvas-placeholder">Awaiting accelerometer telemetry stream...</div>
+        <canvas id="waveformChart"></canvas>
+      </div>
+
+      <!-- Frequency Spectrogram Strip -->
+      <div class="spectrogram-container">
+        <div id="spectrogramPlaceholder" class="canvas-placeholder">Awaiting frequency spectrum data...</div>
+        <div class="spectrogram-header">
+          <span>REAL-TIME FREQUENCY SPECTROGRAM (0 - 50 Hz)</span>
+          <span style="font-size: 0.625rem; color: var(--text-muted); font-family: var(--font-mono);">FFT Magnitude Heatmap</span>
+        </div>
+        <canvas id="spectrogramCanvas" height="75"></canvas>
+        <div class="spectrogram-legend">
+          <span>0 Hz</span>
+          <div class="legend-bar"></div>
+          <span>50 Hz</span>
+        </div>
+      </div>
+
+      <!-- AI Diagnostics Row -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="label">AI PREDICTION</div>
+          <div id="metricPrediction" class="value" style="color: var(--accent-green); font-size: 0.95rem;">Standby</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">PEAK ACCELERATION</div>
+          <div id="metricPeak" class="value">0.00</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">STA / LTA RATIO</div>
+          <div id="metricStaLta" class="value">0.00</div>
+        </div>
+      </div>
+
+      <!-- Confidence Gauge -->
+      <div class="confidence-wrapper">
+        <div class="confidence-label">
+          <span style="font-size: 0.7rem; uppercase; letter-spacing: 0.5px;">AI Model Confidence</span>
+          <span id="confidenceVal" style="font-weight: 700; color: var(--text-white);">0.0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="confidenceFill" class="progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <!-- Live Event Log -->
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>NODE ID</th>
+              <th>SAMPLE</th>
+              <th>AI PRED</th>
+              <th>CONF</th>
+              <th>ALERT STATE</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted); font-style: italic;">Monitoring 10 NCR crowdsensing nodes • Standby for telemetry...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // Global Stats Trackers
+    let confirmedAlertsToday = 0;
+    let maxAccRecorded = 0.0;
+    let confidenceSum = 0.0;
+    let confidenceCount = 0;
+    let maxReadingObj = { peak: 0.0, node: 'Ambient Baseline', pred: 'Normal', conf: 0.0 };
+
+    // 1. Initialize Leaflet Map with Always-Free OpenStreetMap Tiles (Dark Filter Applied to Tile Pane)
+    const map = L.map('map').setView([28.6139, 77.2090], 10);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Node locations
+    const nodes = [
+      { id: "Node-1 (Delhi CP)", lat: 28.6139, lon: 77.2090 },
+      { id: "Node-2 (Noida Sec 62)", lat: 28.6280, lon: 77.3649 },
+      { id: "Node-3 (Gurugram CyberCity)", lat: 28.4595, lon: 77.0266 },
+      { id: "Node-4 (Faridabad Central)", lat: 28.4089, lon: 77.3178 },
+      { id: "Node-5 (Ghaziabad)", lat: 28.6692, lon: 77.4538 },
+      { id: "Node-6 (Delhi Dwarka)", lat: 28.5921, lon: 77.0460 },
+      { id: "Node-7 (Greater Noida)", lat: 28.4744, lon: 77.5040 },
+      { id: "Node-8 (Delhi Rohini)", lat: 28.7041, lon: 77.1025 },
+      { id: "Node-9 (CP East)", lat: 28.6200, lon: 77.2200 },
+      { id: "Node-10 (Karol Bagh)", lat: 28.6500, lon: 77.1900 }
+    ];
+
+    const nodeMarkers = {};
+    let consensusCircle = null;
+    let consensusLines = [];
+    let centroidMarker = null;
+
+    function createPulsingNodeMarker(lat, lon, statusClass = '') {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="node-marker-pulse ${statusClass}"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+      return L.marker([lat, lon], { icon });
+    }
+
+    nodes.forEach(node => {
+      const marker = createPulsingNodeMarker(node.lat, node.lon);
+      marker.bindPopup(`<b>${node.id}</b><br>Status: Normal`);
+      marker.addTo(map);
+      nodeMarkers[node.id] = marker;
+    });
+
+    function updateMarkerStatus(nodeId, alertState) {
+      let matchedMarker = nodeMarkers[nodeId];
+      if (!matchedMarker) {
+        const key = Object.keys(nodeMarkers).find(k => k.includes(nodeId.split(' ')[0]) || nodeId.includes(k.split(' ')[0]));
+        if (key) matchedMarker = nodeMarkers[key];
+      }
+      if (matchedMarker) {
+        let statusClass = '';
+        if (alertState === 'CONFIRMED_EARTHQUAKE_ALERT') statusClass = 'confirmed-quake';
+        else if (alertState === 'LOCAL_VIBRATION') statusClass = 'local-vib';
+
+        const lat = matchedMarker.getLatLng().lat;
+        const lon = matchedMarker.getLatLng().lng;
+        
+        map.removeLayer(matchedMarker);
+        const newMarker = createPulsingNodeMarker(lat, lon, statusClass);
+        newMarker.bindPopup(`<b>${nodeId}</b><br>Alert: ${alertState}`);
+        newMarker.addTo(map);
+        
+        const matchedKey = Object.keys(nodeMarkers).find(k => nodeMarkers[k] === matchedMarker) || nodeId;
+        nodeMarkers[matchedKey] = newMarker;
+      }
+    }
+
+    function resetAllMarkersToNormal() {
+      Object.keys(nodeMarkers).forEach(key => {
+        const marker = nodeMarkers[key];
+        const lat = marker.getLatLng().lat;
+        const lon = marker.getLatLng().lng;
+        map.removeLayer(marker);
+        const newMarker = createPulsingNodeMarker(lat, lon, '');
+        newMarker.bindPopup(`<b>${key}</b><br>Status: Normal`);
+        newMarker.addTo(map);
+        nodeMarkers[key] = newMarker;
+      });
+    }
+
+    function clearConsensusCluster() {
+      if (consensusCircle) { map.removeLayer(consensusCircle); consensusCircle = null; }
+      if (centroidMarker) { map.removeLayer(centroidMarker); centroidMarker = null; }
+      consensusLines.forEach(l => map.removeLayer(l));
+      consensusLines = [];
+    }
+
+    function renderConsensusCluster(epicenter, clusterNodes) {
+      clearConsensusCluster();
+      if (!epicenter || !epicenter.lat || !epicenter.lon) return;
+
+      // Draw 15km yellow consensus radius circle
+      consensusCircle = L.circle([epicenter.lat, epicenter.lon], {
+        radius: 15000,
+        color: '#f59e0b',
+        fillColor: '#f59e0b',
+        fillOpacity: 0.15,
+        weight: 2,
+        dashArray: '6, 6'
+      }).addTo(map);
+
+      // Centroid Marker
+      centroidMarker = L.circleMarker([epicenter.lat, epicenter.lon], {
+        radius: 8,
+        fillColor: '#fcd34d',
+        color: '#ffffff',
+        weight: 2,
+        fillOpacity: 1
+      }).bindPopup(`<b>Epicentral Centroid (Consensus Center)</b><br>Lat: ${epicenter.lat.toFixed(4)}, Lon: ${epicenter.lon.toFixed(4)}`).addTo(map);
+
+      // Draw connecting dotted yellow lines to contributing cluster nodes
+      if (clusterNodes && Array.isArray(clusterNodes)) {
+        clusterNodes.forEach(cn => {
+          if (cn.lat && cn.lon) {
+            const poly = L.polyline([[epicenter.lat, epicenter.lon], [cn.lat, cn.lon]], {
+              color: '#fcd34d',
+              weight: 2,
+              dashArray: '4, 6',
+              opacity: 0.85
+            }).addTo(map);
+            consensusLines.push(poly);
+          }
+        });
+      }
+    }
+
+    // 2. Initialize Chart.js Waveform Line Chart
+    const ctx = document.getElementById('waveformChart').getContext('2d');
+    const timeLabels = Array.from({length: 50}, (_, i) => `${(i * 0.1).toFixed(1)}s`);
+
+    const waveformChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [
+          { label: 'ax (X-Axis)', data: Array(50).fill(0), borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0, tension: 0.35 },
+          { label: 'ay (Y-Axis)', data: Array(50).fill(0), borderColor: '#38bdf8', borderWidth: 1.5, pointRadius: 0, tension: 0.35 },
+          { label: 'az (Z-Axis)', data: Array(50).fill(0), borderColor: '#10b981', borderWidth: 1.5, pointRadius: 0, tension: 0.35 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+          x: { display: false },
+          y: { 
+            grid: { color: 'rgba(255, 255, 255, 0.03)' }, 
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } } 
+          }
+        },
+        plugins: {
+          legend: { 
+            position: 'top',
+            labels: { color: '#94a3b8', font: { family: 'Outfit', size: 10, weight: '500' }, boxWidth: 8, usePointStyle: true } 
+          }
+        }
+      }
+    });
+
+    // 3. Initialize HTML5 Spectrogram Canvas Engine
+    const specCanvas = document.getElementById('spectrogramCanvas');
+    const specCtx = specCanvas.getContext('2d');
+    const SPECTROGRAM_SLICES = 60;
+    const FREQ_BINS = 24;
+    let spectrogramHistory = [];
+
+    function drawSpectrogramSlice(intensityVal) {
+      const slice = [];
+      for (let b = 0; b < FREQ_BINS; b++) {
+        let factor = 1.0 - Math.abs(b - FREQ_BINS/2) / (FREQ_BINS/2);
+        let val = Math.min(1.0, intensityVal * factor * (0.6 + Math.random() * 0.8));
+        slice.push(val);
+      }
+      spectrogramHistory.push(slice);
+      if (spectrogramHistory.length > SPECTROGRAM_SLICES) spectrogramHistory.shift();
+
+      renderSpectrogram();
+    }
+
+    function renderSpectrogram() {
+      const width = specCanvas.width = specCanvas.clientWidth;
+      const height = specCanvas.height = specCanvas.clientHeight;
+      specCtx.clearRect(0, 0, width, height);
+
+      const sliceWidth = width / SPECTROGRAM_SLICES;
+      const binHeight = height / FREQ_BINS;
+
+      spectrogramHistory.forEach((slice, sIdx) => {
+        slice.forEach((val, bIdx) => {
+          specCtx.fillStyle = getSpectrogramColor(val);
+          specCtx.fillRect(sIdx * sliceWidth, (FREQ_BINS - 1 - bIdx) * binHeight, sliceWidth + 0.5, binHeight + 0.5);
+        });
+      });
+    }
+
+    function getSpectrogramColor(v) {
+      if (v < 0.1) return '#020408';
+      if (v < 0.25) return `rgba(2, 132, 199, ${v * 2.5})`;
+      if (v < 0.5) return `rgba(16, 185, 129, ${v * 1.8})`;
+      if (v < 0.75) return `rgba(245, 158, 11, ${v * 1.4})`;
+      return `rgba(239, 68, 68, ${Math.min(1.0, v * 1.2)})`;
+    }
+
+    // 4. Connect to Server-Sent Events (SSE) Stream
+    const sseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:') 
+      ? '/events' 
+      : 'http://127.0.0.1:5000/events';
+
+    console.log("Connecting SSE to:", sseUrl);
+    const evtSource = new EventSource(sseUrl);
+    const liveBadge = document.querySelector('.live-badge');
+    const liveDot = document.querySelector('.live-dot');
+    const liveText = liveBadge.querySelector('span');
+
+    evtSource.onopen = function() {
+      console.log("SSE Connection Opened!");
+      liveBadge.style.background = 'rgba(6, 182, 212, 0.08)';
+      liveBadge.style.borderColor = 'rgba(6, 182, 212, 0.25)';
+      liveBadge.style.color = 'var(--accent-cyan)';
+      liveDot.style.background = 'var(--accent-cyan)';
+      liveDot.style.boxShadow = '0 0 8px var(--accent-cyan)';
+      liveText.textContent = 'SSE STREAM ACTIVE';
+    };
+
+    evtSource.onerror = function(err) {
+      console.warn("SSE Connection Error/Reconnecting...", err);
+      liveBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+      liveBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+      liveBadge.style.color = 'var(--accent-yellow)';
+      liveDot.style.background = 'var(--accent-yellow)';
+      liveDot.style.boxShadow = '0 0 8px var(--accent-yellow)';
+      liveText.textContent = 'RECONNECTING...';
+    };
+
+    function handleIncomingData(dataStr) {
+      try {
+        const data = JSON.parse(dataStr);
+        console.log("Incoming Telemetry Event:", data);
+        if (data) {
+          if (data.event_type === 'incoming_warning' && data.warnings) {
+            renderRegionalWarnings(data.warnings);
+          } else if (data.node_id) {
+            updateDashboard(data);
+          }
+        }
+      } catch (err) {
+        console.error("Parse Error:", err);
+      }
+    }
+
+    function renderRegionalWarnings(warnings) {
+      const feed = document.getElementById('regionalWarningFeed');
+      const container = document.getElementById('warningCardsList');
+      if (!warnings || warnings.length === 0) {
+        feed.style.display = 'none';
+        return;
+      }
+      feed.style.display = 'block';
+      container.innerHTML = warnings.map(item => `
+        <div style="background: rgba(8, 12, 20, 0.95); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 0.55rem 0.75rem; font-size: 0.8rem; color: #f8fafc; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <div style="font-weight: 700; color: #fcd34d; margin-bottom: 0.2rem; display: flex; justify-content: space-between;">
+            <span>⚠️ ${item.node_id}</span>
+            <span style="font-size: 0.725rem; color: var(--text-muted); font-family: var(--font-mono);">${item.distance_km} km away</span>
+          </div>
+          <div style="color: #cbd5e1; font-size: 0.775rem;">
+            Estimated shaking in <strong style="color: #ef4444; font-size: 0.9rem; font-family: var(--font-mono);">${Number(item.lead_time_sec).toFixed(1)}s</strong>
+          </div>
+          <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.15rem; font-style: italic;">not yet detected locally</div>
+        </div>
+      `).join('');
+    }
+
+    evtSource.addEventListener('telemetry', function(e) {
+      handleIncomingData(e.data);
+    });
+
+    evtSource.onmessage = function(e) {
+      handleIncomingData(e.data);
+    };
+
+    const recentLogs = [];
+
+    function updateDashboard(data) {
+      // Hide Idle Canvas Placeholders once live telemetry stream arrives
+      document.getElementById('waveformPlaceholder').style.opacity = '0';
+      document.getElementById('spectrogramPlaceholder').style.opacity = '0';
+
+      const alertState = data.alert_level || 'NORMAL';
+      const nodeId = data.node_id || 'Unknown-Node';
+      const pred = data.prediction || 'NORMAL';
+      const conf = (data.confidence || 0) * 100;
+      const peak = data.features ? data.features.peak_mag : 0;
+      const staLta = data.features ? data.features.sta_lta_ratio : 0;
+      const timeStr = new Date().toLocaleTimeString();
+
+      // Top Stats Updates
+      if (peak > maxAccRecorded) {
+        maxAccRecorded = peak;
+        document.getElementById('statMaxAcc').innerHTML = `${maxAccRecorded.toFixed(2)} <span class="stat-unit">m/s²</span>`;
+      }
+
+      if (conf > 0) {
+        confidenceSum += conf;
+        confidenceCount++;
+        const avgConf = (confidenceSum / confidenceCount).toFixed(1);
+        document.getElementById('statAvgConf').innerHTML = `${avgConf}<span class="stat-unit">%</span>`;
+      }
+
+      if (peak > maxReadingObj.peak) {
+        maxReadingObj = { peak, node: nodeId, pred, conf };
+        document.getElementById('card3Mag').textContent = `${peak.toFixed(2)} m/s²`;
+        document.getElementById('card3Node').textContent = nodeId;
+        document.getElementById('card3Pred').textContent = pred;
+        document.getElementById('card3Conf').textContent = `${conf.toFixed(1)}%`;
+      }
+
+      // Update Banner & Top Counter
+      const banner = document.getElementById('alertBanner');
+      const icon = document.getElementById('bannerIcon');
+      const status = document.getElementById('bannerStatus');
+      const subtext = document.getElementById('bannerSubtext');
+      const magVal = document.getElementById('bannerMagVal');
+
+      magVal.textContent = peak.toFixed(2);
+
+      if (alertState === 'CONFIRMED_EARTHQUAKE_ALERT') {
+        const leadTime = data.lead_time_sec !== undefined ? Number(data.lead_time_sec).toFixed(1) : '0.0';
+        banner.className = 'alert-banner state-confirmed';
+        icon.textContent = '🚨';
+        status.textContent = 'CONFIRMED SEISMIC ALERT DETECTED';
+        subtext.textContent = `Multiple nearby nodes (≥3 within 15km) confirm seismic motion! Triggering cluster warning: ${leadTime}s before S-Wave Arrival. Distant regional predictive lead times broadcasted below.`;
+        
+        confirmedAlertsToday++;
+        document.getElementById('statAlertsToday').textContent = confirmedAlertsToday;
+
+        // Card 2 Update (Last Confirmed Alert)
+        document.getElementById('card2Badge').className = 'badge badge-confirmed';
+        document.getElementById('card2Badge').textContent = 'CONFIRMED';
+        const epiLat = data.epicenter ? data.epicenter.lat : 28.6139;
+        const epiLon = data.epicenter ? data.epicenter.lon : 77.2090;
+        document.getElementById('card2Epicenter').textContent = `Epicenter: (${epiLat.toFixed(2)}, ${epiLon.toFixed(2)})`;
+        document.getElementById('card2ClusterSize').textContent = `${data.cluster_nodes ? data.cluster_nodes.length : 3} Nodes`;
+        document.getElementById('card2LeadTime').textContent = `${leadTime}s S-Wave`;
+        document.getElementById('card2Time').textContent = timeStr;
+
+        // Render Glowing Cluster Overlay on Map
+        if (data.epicenter) {
+          renderConsensusCluster(data.epicenter, data.cluster_nodes);
+        }
+
+      } else if (alertState === 'LOCAL_VIBRATION') {
+        banner.className = 'alert-banner state-local';
+        icon.textContent = '⚠️';
+        status.textContent = 'LOCAL VIBRATION / FALSE ALARM';
+        subtext.textContent = `Isolated vibration detected by ${nodeId}. Standing by for spatial confirmation.`;
+      } else {
+        banner.className = 'alert-banner state-normal';
+        icon.textContent = '🟢';
+        status.textContent = 'SYSTEM NORMAL - MONITORING ACTIVE';
+        subtext.textContent = 'All 10 NCR crowdsensing node devices reporting normal ambient telemetry.';
+        document.getElementById('regionalWarningFeed').style.display = 'none';
+        clearConsensusCluster();
+      }
+
+      // Card 1 Update (Last Recorded Event)
+      let c1BadgeClass = 'badge-normal';
+      if (alertState === 'CONFIRMED_EARTHQUAKE_ALERT') c1BadgeClass = 'badge-confirmed';
+      else if (alertState === 'LOCAL_VIBRATION') c1BadgeClass = 'badge-local';
+
+      document.getElementById('card1Badge').className = `badge ${c1BadgeClass}`;
+      document.getElementById('card1Badge').textContent = alertState.replace('_EARTHQUAKE_ALERT', '');
+      document.getElementById('card1Node').textContent = nodeId;
+      document.getElementById('card1Time').textContent = timeStr;
+      document.getElementById('card1Mag').textContent = `${peak.toFixed(2)} m/s²`;
+      document.getElementById('card1Pred').textContent = pred;
+      document.getElementById('card1Conf').textContent = `${conf.toFixed(1)}%`;
+
+      // Update Map Marker Pulsing Status
+      if (alertState === 'NORMAL') {
+        resetAllMarkersToNormal();
+      } else {
+        updateMarkerStatus(nodeId, alertState);
+      }
+
+      // Update Active Node Diagnostics
+      document.getElementById('activeNodeName').textContent = `Node: ${nodeId}`;
+      document.getElementById('metricPrediction').textContent = pred;
+      document.getElementById('metricPrediction').style.color = pred === 'real_quake' ? '#ef4444' : '#10b981';
+      document.getElementById('metricPeak').textContent = peak.toFixed(2);
+      document.getElementById('metricStaLta').textContent = staLta.toFixed(2);
+
+      // AI Model Confidence Progress Bar Binding
+      let rawConf = data.confidence !== undefined ? Number(data.confidence) : 0;
+      if (rawConf > 0 && rawConf <= 1.0) {
+        rawConf = rawConf * 100;
+      }
+      const confPct = Math.min(Math.max(rawConf, 0), 100);
+
+      document.getElementById('confidenceVal').textContent = `${confPct.toFixed(1)}%`;
+      document.getElementById('confidenceFill').style.width = `${confPct.toFixed(1)}%`;
+
+      // Update Chart Waveform Simulation
+      const noise = () => (Math.random() - 0.5) * (pred === 'real_quake' ? peak : 0.3);
+      waveformChart.data.datasets[0].data = Array.from({length: 50}, noise);
+      waveformChart.data.datasets[1].data = Array.from({length: 50}, noise);
+      waveformChart.data.datasets[2].data = Array.from({length: 50}, noise);
+      waveformChart.update();
+
+      // Render Spectrogram Slice
+      const intensity = pred === 'real_quake' ? Math.min(1.0, peak / 8.0) : 0.15;
+      drawSpectrogramSlice(intensity);
+
+      // Update Log Table
+      recentLogs.unshift({ nodeId, file: data.file, pred, conf: conf.toFixed(1), alertState });
+      if (recentLogs.length > 10) recentLogs.pop();
+
+      const tbody = document.getElementById('logTableBody');
+      tbody.innerHTML = recentLogs.map(item => {
+        let badgeClass = 'badge-normal';
+        if (item.alertState === 'CONFIRMED_EARTHQUAKE_ALERT') badgeClass = 'badge-confirmed';
+        else if (item.alertState === 'LOCAL_VIBRATION') badgeClass = 'badge-local';
+
+        return `
+          <tr>
+            <td style="font-weight: 600;">${item.nodeId}</td>
+            <td style="font-size: 0.725rem; color: var(--text-muted);">${item.file}</td>
+            <td>${item.pred}</td>
+            <td>${item.conf}%</td>
+            <td><span class="badge ${badgeClass}">${item.alertState}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>

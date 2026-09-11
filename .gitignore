@@ -1,0 +1,34 @@
+# =========================================================================
+# CrowdSensing Project .gitignore
+# =========================================================================
+
+# Large HDF5 Raw Datasets (>400MB each)
+*.hdf5
+test.hdf5
+test_noise.hdf5
+
+# Temporary & Working Scratch Files
+ignore
+*.log
+*.tmp
+.scratch/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE & Operating System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Duplicate Backup Model Files (Main earthquake_ai_model.pkl is tracked)
+earthquake_ai_model_v*.pkl

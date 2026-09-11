@@ -1,0 +1,21 @@
+{
+  "active_version": "v3",
+  "versioned_filename": "earthquake_ai_model_v3.pkl",
+  "default_filename": "earthquake_ai_model.pkl",
+  "accuracy": 0.9067,
+  "test_samples": 75,
+  "trained_at": "2026-09-06T18:22:36.222980+00:00",
+  "feature_names": [
+    "duration",
+    "peak_mag",
+    "rms_mag",
+    "sta_lta_ratio",
+    "dom_freq",
+    "peak_ax",
+    "peak_ay",
+    "peak_az",
+    "rms_ax",
+    "rms_ay",
+    "rms_az"
+  ]
+}
