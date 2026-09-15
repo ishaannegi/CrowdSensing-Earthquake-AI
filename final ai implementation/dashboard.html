@@ -146,11 +146,14 @@
     /* Asymmetric Top Stats Bar with Recessed Depth */
     .top-stats-bar {
       display: grid;
-      grid-template-columns: 1fr 1.35fr 1fr 1fr;
-      gap: 0.9rem;
+      grid-template-columns: 0.9fr 1.35fr 1fr 1fr 1fr;
+      gap: 0.85rem;
     }
 
-    @media (max-width: 960px) {
+    @media (max-width: 1100px) {
+      .top-stats-bar { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 768px) {
       .top-stats-bar { grid-template-columns: repeat(2, 1fr); }
     }
 
@@ -190,7 +193,7 @@
     }
 
     .stat-card.featured-hero .stat-val {
-      font-size: 2.5rem;
+      font-size: 2.3rem;
       color: #fcd34d;
     }
 
@@ -251,12 +254,12 @@
     .banner-title h2 {
       font-size: 1.15rem;
       font-weight: 700;
-      letter-spacing: -0.3px;
+      letter-spacing: 0.5px;
     }
 
     .banner-title p {
-      font-size: 0.8rem;
-      opacity: 0.8;
+      font-size: 0.775rem;
+      color: var(--text-muted);
       margin-top: 0.15rem;
     }
 
@@ -265,11 +268,10 @@
     }
 
     .banner-metric .val {
-      font-size: 2.6rem;
+      font-size: 1.8rem;
       font-weight: 700;
       font-family: var(--font-mono);
       color: var(--text-white);
-      line-height: 1;
     }
 
     .banner-metric .lbl {
@@ -1059,17 +1061,18 @@
       clearLocalVibrationCircle();
       if (!lat || !lon) return;
 
-      // Draw small 1.5 km amber circle around the isolated vibration node
+      // Draw small 2.0 km amber dashed circle around isolated vibration node
       localVibrationCircle = L.circle([lat, lon], {
-        radius: 1500,
+        radius: 2000,
         color: '#f59e0b',
         fillColor: '#f59e0b',
-        fillOpacity: 0.25,
-        weight: 2,
-        dashArray: '5, 5'
+        fillOpacity: 0.3,
+        weight: 3,
+        dashArray: '6, 6'
       }).addTo(map);
 
       localVibrationCircle.bindPopup(`<b>⚠️ Isolated Local Vibration</b><br>Node: ${nodeId}<br>Status: Single Node Trigger (Unconfirmed)`).openPopup();
+      map.setView([lat, lon], 11, { animate: true });
     }
 
     function clearConsensusCluster() {
@@ -1087,26 +1090,28 @@
       const densityModeStr = (epicenter && epicenter.density_mode) ? epicenter.density_mode : `${radiusKm}km Standard`;
       const radiusMeters = radiusKm * 1000;
 
-      // Draw Dynamic Density-Adaptive Consensus Radius Circle
+      // Draw Dynamic Density-Adaptive Consensus Radius Circle (Vibrant Red)
       consensusCircle = L.circle([epicenter.lat, epicenter.lon], {
         radius: radiusMeters,
-        color: '#f59e0b',
-        fillColor: '#f59e0b',
-        fillOpacity: 0.15,
-        weight: 2,
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.2,
+        weight: 3,
         dashArray: '6, 6'
       }).addTo(map);
 
-      const mwVal = (epicenter.magnitude_mw !== undefined) ? Number(epicenter.magnitude_mw).toFixed(1) : '5.8';
+      const mwVal = (epicenter.magnitude_mw !== undefined) ? Number(epicenter.magnitude_mw).toFixed(1) : '8.0';
 
       // Centroid Marker
       centroidMarker = L.circleMarker([epicenter.lat, epicenter.lon], {
-        radius: 8,
-        fillColor: '#fcd34d',
+        radius: 9,
+        fillColor: '#ef4444',
         color: '#ffffff',
-        weight: 2,
+        weight: 2.5,
         fillOpacity: 1
-      }).bindPopup(`<b>Epicentral Centroid (Consensus Center)</b><br>Magnitude: <b>Mw ${mwVal}</b><br>Adaptive Radius: <b>${radiusKm} km</b> (${densityModeStr})<br>Lat: ${epicenter.lat.toFixed(4)}, Lon: ${epicenter.lon.toFixed(4)}`).addTo(map);
+      }).bindPopup(`<b>🚨 Epicentral Centroid (Consensus Center)</b><br>Magnitude: <b>Mw ${mwVal}</b><br>Adaptive Radius: <b>${radiusKm} km</b> (${densityModeStr})<br>Lat: ${epicenter.lat.toFixed(4)}, Lon: ${epicenter.lon.toFixed(4)}`).addTo(map);
+
+      centroidMarker.openPopup();
 
       // Draw connecting dotted yellow lines to contributing cluster nodes
       if (clusterNodes && Array.isArray(clusterNodes)) {
@@ -1114,13 +1119,19 @@
           if (cn.lat && cn.lon) {
             const poly = L.polyline([[epicenter.lat, epicenter.lon], [cn.lat, cn.lon]], {
               color: '#fcd34d',
-              weight: 2,
+              weight: 2.5,
               dashArray: '4, 6',
-              opacity: 0.85
+              opacity: 0.9
             }).addTo(map);
             consensusLines.push(poly);
           }
         });
+      }
+
+      if (consensusCircle && consensusCircle.getBounds) {
+        map.fitBounds(consensusCircle.getBounds(), { padding: [25, 25], animate: true });
+      } else {
+        map.setView([epicenter.lat, epicenter.lon], 11, { animate: true });
       }
     }
 
