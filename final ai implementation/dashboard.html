@@ -957,6 +957,54 @@
       });
     }
 
+    let localVibrationCircle = null;
+    let localVibrationTimer = null;
+    let activeSystemAlertState = 'NORMAL';
+    let alertAutoClearTimer = null;
+
+    function getNodeCoordinates(nodeId) {
+      if (!nodeId) return null;
+      let matchedMarker = nodeMarkers[nodeId];
+      if (!matchedMarker) {
+        const key = Object.keys(nodeMarkers).find(k => k.includes(nodeId.split(' ')[0]) || nodeId.includes(k.split(' ')[0]));
+        if (key) matchedMarker = nodeMarkers[key];
+      }
+      if (matchedMarker) {
+        return { lat: matchedMarker.getLatLng().lat, lon: matchedMarker.getLatLng().lng };
+      }
+      const found = nodes.find(n => n.id.includes(nodeId.split(' ')[0]) || nodeId.includes(n.id.split(' ')[0]));
+      if (found) return { lat: found.lat, lon: found.lon };
+      return null;
+    }
+
+    function clearLocalVibrationCircle() {
+      if (localVibrationCircle) {
+        map.removeLayer(localVibrationCircle);
+        localVibrationCircle = null;
+      }
+      if (localVibrationTimer) {
+        clearTimeout(localVibrationTimer);
+        localVibrationTimer = null;
+      }
+    }
+
+    function renderLocalVibrationCircle(lat, lon, nodeId) {
+      clearLocalVibrationCircle();
+      if (!lat || !lon) return;
+
+      // Draw small 1.5 km amber circle around the isolated vibration node
+      localVibrationCircle = L.circle([lat, lon], {
+        radius: 1500,
+        color: '#f59e0b',
+        fillColor: '#f59e0b',
+        fillOpacity: 0.25,
+        weight: 2,
+        dashArray: '5, 5'
+      }).addTo(map);
+
+      localVibrationCircle.bindPopup(`<b>⚠️ Isolated Local Vibration</b><br>Node: ${nodeId}<br>Status: Single Node Trigger (Unconfirmed)`).openPopup();
+    }
+
     function clearConsensusCluster() {
       if (consensusCircle) { map.removeLayer(consensusCircle); consensusCircle = null; }
       if (centroidMarker) { map.removeLayer(centroidMarker); centroidMarker = null; }
@@ -1166,6 +1214,21 @@
 
     const recentLogs = [];
 
+    function resetBannerToNormal() {
+      const banner = document.getElementById('alertBanner');
+      const icon = document.getElementById('bannerIcon');
+      const status = document.getElementById('bannerStatus');
+      const subtext = document.getElementById('bannerSubtext');
+
+      document.getElementById('statMwMag').innerHTML = `Mw --`;
+      if (banner) banner.className = 'alert-banner state-normal';
+      if (icon) icon.textContent = '🟢';
+      if (status) status.textContent = 'SYSTEM NORMAL - MONITORING ACTIVE';
+      if (subtext) subtext.textContent = 'All 10 NCR crowdsensing node devices reporting normal ambient telemetry.';
+      const feed = document.getElementById('regionalWarningFeed');
+      if (feed) feed.style.display = 'none';
+    }
+
     function updateDashboard(data) {
       // Hide Idle Canvas Placeholders once live telemetry stream arrives
       document.getElementById('waveformPlaceholder').style.opacity = '0';
@@ -1210,6 +1273,10 @@
       magVal.textContent = peak.toFixed(2);
 
       if (alertState === 'CONFIRMED_EARTHQUAKE_ALERT') {
+        activeSystemAlertState = 'CONFIRMED_EARTHQUAKE_ALERT';
+        if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
+        clearLocalVibrationCircle();
+
         const leadTime = data.lead_time_sec !== undefined ? Number(data.lead_time_sec).toFixed(1) : '0.0';
         const mwVal = data.magnitude_mw || (data.epicenter && data.epicenter.magnitude_mw) || 5.8;
         const mwFormatted = Number(mwVal).toFixed(1);
@@ -1244,20 +1311,46 @@
           renderConsensusCluster(epiObj, data.cluster_nodes);
         }
 
+        // Auto-hold active earthquake alert map overlay for 12 seconds
+        alertAutoClearTimer = setTimeout(() => {
+          activeSystemAlertState = 'NORMAL';
+          resetBannerToNormal();
+          clearConsensusCluster();
+          resetAllMarkersToNormal();
+        }, 12000);
+
       } else if (alertState === 'LOCAL_VIBRATION') {
-        document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
-        banner.className = 'alert-banner state-local';
-        icon.textContent = '⚠️';
-        status.textContent = 'LOCAL VIBRATION / FALSE ALARM';
-        subtext.textContent = `Isolated vibration detected by ${nodeId}. Standing by for spatial confirmation.`;
+        if (activeSystemAlertState !== 'CONFIRMED_EARTHQUAKE_ALERT') {
+          activeSystemAlertState = 'LOCAL_VIBRATION';
+          if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
+
+          document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
+          banner.className = 'alert-banner state-local';
+          icon.textContent = '⚠️';
+          status.textContent = 'LOCAL VIBRATION / FALSE ALARM';
+          subtext.textContent = `Isolated vibration detected by ${nodeId}. Standing by for spatial confirmation.`;
+
+          const coords = getNodeCoordinates(nodeId);
+          if (coords) {
+            renderLocalVibrationCircle(coords.lat, coords.lon, nodeId);
+          }
+
+          // Auto-hold active local vibration circle for 8 seconds
+          alertAutoClearTimer = setTimeout(() => {
+            activeSystemAlertState = 'NORMAL';
+            resetBannerToNormal();
+            clearLocalVibrationCircle();
+            resetAllMarkersToNormal();
+          }, 8000);
+        }
+
       } else {
-        document.getElementById('statMwMag').innerHTML = `Mw --`;
-        banner.className = 'alert-banner state-normal';
-        icon.textContent = '🟢';
-        status.textContent = 'SYSTEM NORMAL - MONITORING ACTIVE';
-        subtext.textContent = 'All 10 NCR crowdsensing node devices reporting normal ambient telemetry.';
-        document.getElementById('regionalWarningFeed').style.display = 'none';
-        clearConsensusCluster();
+        // Routine NORMAL ambient telemetry stream
+        if (activeSystemAlertState === 'NORMAL') {
+          resetBannerToNormal();
+          clearConsensusCluster();
+          clearLocalVibrationCircle();
+        }
       }
 
       // Card 1 Update (Last Recorded Event)
@@ -1274,10 +1367,10 @@
       document.getElementById('card1Conf').textContent = `${conf.toFixed(1)}%`;
 
       // Update Map Marker Pulsing Status
-      if (alertState === 'NORMAL') {
-        resetAllMarkersToNormal();
-      } else {
+      if (alertState !== 'NORMAL') {
         updateMarkerStatus(nodeId, alertState);
+      } else if (activeSystemAlertState === 'NORMAL') {
+        resetAllMarkersToNormal();
       }
 
       // Update Active Node Diagnostics
