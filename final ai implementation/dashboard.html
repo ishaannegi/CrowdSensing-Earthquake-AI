@@ -718,17 +718,17 @@
       <div class="stat-val">10 <span class="stat-unit">Online</span></div>
     </div>
     <div class="stat-card featured-hero">
-      <div class="stat-lbl">REAL ALERTS / TOTAL RECEIVED</div>
+      <div class="stat-lbl">REAL ALERTS / TOTAL UPDATES</div>
       <div id="heroStatVal" class="stat-val" style="display: flex; align-items: baseline; gap: 0.35rem;">
         <span id="statRealAlerts" style="color: #ef4444; font-weight: 800;">0</span>
         <span style="color: var(--text-muted); font-size: 1.6rem; font-weight: 300;">/</span>
-        <span id="statTotalAlerts" style="color: #fcd34d; font-weight: 800;">0</span>
-        <span class="stat-unit" style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Total</span>
+        <span id="statTotalUpdates" style="color: #38bdf8; font-weight: 800;">0</span>
+        <span class="stat-unit" style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Updates</span>
       </div>
       <div style="font-size: 0.675rem; color: var(--text-muted); margin-top: 0.2rem; font-family: var(--font-mono); display: flex; gap: 0.45rem; align-items: center;">
-        <span id="statRealSub" style="color: #fca5a5; font-weight: 600;">0 Real Quakes</span>
+        <span id="statRealSub" style="color: #fca5a5; font-weight: 600;">0 Confirmed Quakes</span>
         <span style="color: rgba(255,255,255,0.25);">•</span>
-        <span id="statLocalSub" style="color: #fde68a; font-weight: 600;">0 Local Vibs</span>
+        <span id="statTotalSub" style="color: #7dd3fc; font-weight: 600;">0 Telemetry Pkts</span>
       </div>
     </div>
     <div class="stat-card">
@@ -914,33 +914,30 @@
   <script>
     // Global Stats Trackers
     let confirmedAlertsToday = 0;
-    let localVibrationsToday = 0;
-    let totalAlertsToday = 0;
+    let totalTelemetryUpdates = 0;
     let maxAccRecorded = 0.0;
     let confidenceSum = 0.0;
     let confidenceCount = 0;
     let maxReadingObj = { peak: 0.0, node: 'Ambient Baseline', pred: 'Normal', conf: 0.0 };
 
-    function updateAlertCounters(isReal) {
-      if (isReal) {
+    function updateAlertCounters(isRealAlert) {
+      if (isRealAlert) {
         confirmedAlertsToday++;
-      } else {
-        localVibrationsToday++;
       }
-      totalAlertsToday = confirmedAlertsToday + localVibrationsToday;
+      totalTelemetryUpdates++;
 
       const realElem = document.getElementById('statRealAlerts');
-      const totalElem = document.getElementById('statTotalAlerts');
+      const totalElem = document.getElementById('statTotalUpdates');
       const realSubElem = document.getElementById('statRealSub');
-      const localSubElem = document.getElementById('statLocalSub');
+      const totalSubElem = document.getElementById('statTotalSub');
 
       if (realElem) realElem.textContent = confirmedAlertsToday;
-      if (totalElem) totalElem.textContent = totalAlertsToday;
-      if (realSubElem) realSubElem.textContent = `${confirmedAlertsToday} Real Quakes`;
-      if (localSubElem) localSubElem.textContent = `${localVibrationsToday} Local Vibs`;
+      if (totalElem) totalElem.textContent = totalTelemetryUpdates;
+      if (realSubElem) realSubElem.textContent = `${confirmedAlertsToday} Confirmed Quakes`;
+      if (totalSubElem) totalSubElem.textContent = `${totalTelemetryUpdates} Telemetry Pkts`;
 
       const cardVal = document.getElementById('heroStatVal');
-      if (cardVal) {
+      if (cardVal && isRealAlert) {
         cardVal.classList.remove('stat-pop');
         void cardVal.offsetWidth;
         cardVal.classList.add('stat-pop');
@@ -1205,6 +1202,42 @@
       return `rgba(239, 68, 68, ${Math.min(1.0, v * 1.2)})`;
     }
 
+    // Continuous 10Hz Smooth Rolling Waveform & Spectrogram Ticker Loop
+    let currentWaveformNoisePeak = 0.25;
+    let wavePhase = 0.0;
+    let totalPacketsReceived = 0;
+
+    function stepContinuousWaveform() {
+      wavePhase += 0.25;
+      const t = wavePhase;
+      const amp = currentWaveformNoisePeak;
+      
+      const newAx = Math.sin(t * 1.4) * amp * 0.75 + (Math.random() - 0.5) * amp * 0.35;
+      const newAy = Math.cos(t * 2.0) * amp * 0.75 + (Math.random() - 0.5) * amp * 0.35;
+      const newAz = Math.sin(t * 0.8) * amp * 0.75 + (Math.random() - 0.5) * amp * 0.35;
+
+      waveformChart.data.datasets[0].data.shift();
+      waveformChart.data.datasets[0].data.push(newAx);
+
+      waveformChart.data.datasets[1].data.shift();
+      waveformChart.data.datasets[1].data.push(newAy);
+
+      waveformChart.data.datasets[2].data.shift();
+      waveformChart.data.datasets[2].data.push(newAz);
+
+      waveformChart.update('none');
+
+      // Continuous Spectrogram slice update
+      drawSpectrogramSlice(Math.min(1.0, amp / 5.0));
+
+      // Smooth decay from high earthquake shock back to baseline ambient vibration (0.25 m/s²)
+      if (currentWaveformNoisePeak > 0.25) {
+        currentWaveformNoisePeak *= 0.94;
+      }
+    }
+
+    setInterval(stepContinuousWaveform, 100);
+
     // 4. Connect to Server-Sent Events (SSE) Stream
     const sseUrl = (window.location.protocol === 'http:' || window.location.protocol === 'https:') 
       ? '/events' 
@@ -1223,7 +1256,7 @@
       liveBadge.style.color = 'var(--accent-cyan)';
       liveDot.style.background = 'var(--accent-cyan)';
       liveDot.style.boxShadow = '0 0 8px var(--accent-cyan)';
-      liveText.textContent = 'SSE STREAM ACTIVE';
+      liveText.textContent = 'SSE STREAM ACTIVE • 0 Pkts';
     };
 
     evtSource.onerror = function(err) {
@@ -1239,8 +1272,10 @@
     function handleIncomingData(dataStr) {
       try {
         const data = JSON.parse(dataStr);
-        console.log("Incoming Telemetry Event:", data);
         if (data) {
+          totalPacketsReceived++;
+          if (liveText) liveText.textContent = `SSE STREAM ACTIVE • ${totalPacketsReceived} Pkts`;
+
           if (data.event_type === 'incoming_warning' && data.warnings) {
             renderRegionalWarnings(data.warnings);
           } else if (data.node_id) {
@@ -1312,6 +1347,14 @@
       const staLta = data.features ? data.features.sta_lta_ratio : 0;
       const timeStr = new Date().toLocaleTimeString();
 
+      // Track total updates & real alerts
+      updateAlertCounters(alertState === 'CONFIRMED_EARTHQUAKE_ALERT');
+
+      // Dynamically update rolling wave generator peak amplitude
+      if (peak > 0) {
+        currentWaveformNoisePeak = Math.max(0.25, peak);
+      }
+
       // Top Stats Updates
       if (peak > maxAccRecorded) {
         maxAccRecorded = peak;
@@ -1346,8 +1389,6 @@
         activeSystemAlertState = 'CONFIRMED_EARTHQUAKE_ALERT';
         if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
         clearLocalVibrationCircle();
-
-        updateAlertCounters(true);
 
         const leadTime = data.lead_time_sec !== undefined ? Number(data.lead_time_sec).toFixed(1) : '0.0';
         const mwVal = data.magnitude_mw || (data.epicenter && data.epicenter.magnitude_mw) || 5.8;
@@ -1393,7 +1434,11 @@
           activeSystemAlertState = 'LOCAL_VIBRATION';
           if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
 
-          updateAlertCounters(false);
+          document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
+          banner.className = 'alert-banner state-local';
+          icon.textContent = '⚠️';
+          status.textContent = 'LOCAL VIBRATION / FALSE ALARM';
+          subtext.textContent = `Isolated vibration detected by ${nodeId}. Standing by for spatial confirmation.`;
 
           document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
           banner.className = 'alert-banner state-local';
@@ -1460,17 +1505,6 @@
 
       document.getElementById('confidenceVal').textContent = `${confPct.toFixed(1)}%`;
       document.getElementById('confidenceFill').style.width = `${confPct.toFixed(1)}%`;
-
-      // Update Chart Waveform Simulation
-      const noise = () => (Math.random() - 0.5) * (pred === 'real_quake' ? peak : 0.3);
-      waveformChart.data.datasets[0].data = Array.from({length: 50}, noise);
-      waveformChart.data.datasets[1].data = Array.from({length: 50}, noise);
-      waveformChart.data.datasets[2].data = Array.from({length: 50}, noise);
-      waveformChart.update();
-
-      // Render Spectrogram Slice
-      const intensity = pred === 'real_quake' ? Math.min(1.0, peak / 8.0) : 0.15;
-      drawSpectrogramSlice(intensity);
 
       // Update Log Table
       recentLogs.unshift({ nodeId, file: data.file, pred, conf: conf.toFixed(1), alertState });
