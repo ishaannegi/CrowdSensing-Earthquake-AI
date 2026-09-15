@@ -660,6 +660,38 @@
       border: 1px solid rgba(239, 68, 68, 0.35);
       color: #fca5a5;
     }
+
+    /* Smooth Micro-Interactions & Pop Animations */
+    .stat-card {
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    .stat-pop {
+      animation: popPulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.15); filter: brightness(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    .badge {
+      transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, transform 0.2s ease;
+    }
+
+    .alert-banner {
+      transition: background 0.45s ease-in-out, border-color 0.45s ease-in-out, box-shadow 0.45s ease-in-out, transform 0.3s ease;
+    }
+
+    tr {
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
   </style>
 </head>
 <body>
@@ -686,8 +718,18 @@
       <div class="stat-val">10 <span class="stat-unit">Online</span></div>
     </div>
     <div class="stat-card featured-hero">
-      <div class="stat-lbl">CONFIRMED ALERTS TODAY</div>
-      <div id="statAlertsToday" class="stat-val">0</div>
+      <div class="stat-lbl">REAL ALERTS / TOTAL RECEIVED</div>
+      <div id="heroStatVal" class="stat-val" style="display: flex; align-items: baseline; gap: 0.35rem;">
+        <span id="statRealAlerts" style="color: #ef4444; font-weight: 800;">0</span>
+        <span style="color: var(--text-muted); font-size: 1.6rem; font-weight: 300;">/</span>
+        <span id="statTotalAlerts" style="color: #fcd34d; font-weight: 800;">0</span>
+        <span class="stat-unit" style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Total</span>
+      </div>
+      <div style="font-size: 0.675rem; color: var(--text-muted); margin-top: 0.2rem; font-family: var(--font-mono); display: flex; gap: 0.45rem; align-items: center;">
+        <span id="statRealSub" style="color: #fca5a5; font-weight: 600;">0 Real Quakes</span>
+        <span style="color: rgba(255,255,255,0.25);">•</span>
+        <span id="statLocalSub" style="color: #fde68a; font-weight: 600;">0 Local Vibs</span>
+      </div>
     </div>
     <div class="stat-card">
       <div class="stat-lbl">MAX ACCELERATION</div>
@@ -872,10 +914,38 @@
   <script>
     // Global Stats Trackers
     let confirmedAlertsToday = 0;
+    let localVibrationsToday = 0;
+    let totalAlertsToday = 0;
     let maxAccRecorded = 0.0;
     let confidenceSum = 0.0;
     let confidenceCount = 0;
     let maxReadingObj = { peak: 0.0, node: 'Ambient Baseline', pred: 'Normal', conf: 0.0 };
+
+    function updateAlertCounters(isReal) {
+      if (isReal) {
+        confirmedAlertsToday++;
+      } else {
+        localVibrationsToday++;
+      }
+      totalAlertsToday = confirmedAlertsToday + localVibrationsToday;
+
+      const realElem = document.getElementById('statRealAlerts');
+      const totalElem = document.getElementById('statTotalAlerts');
+      const realSubElem = document.getElementById('statRealSub');
+      const localSubElem = document.getElementById('statLocalSub');
+
+      if (realElem) realElem.textContent = confirmedAlertsToday;
+      if (totalElem) totalElem.textContent = totalAlertsToday;
+      if (realSubElem) realSubElem.textContent = `${confirmedAlertsToday} Real Quakes`;
+      if (localSubElem) localSubElem.textContent = `${localVibrationsToday} Local Vibs`;
+
+      const cardVal = document.getElementById('heroStatVal');
+      if (cardVal) {
+        cardVal.classList.remove('stat-pop');
+        void cardVal.offsetWidth;
+        cardVal.classList.add('stat-pop');
+      }
+    }
 
     // 1. Initialize Leaflet Map with Always-Free OpenStreetMap Tiles (Dark Filter Applied to Tile Pane)
     const map = L.map('map').setView([28.6139, 77.2090], 10);
@@ -1277,6 +1347,8 @@
         if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
         clearLocalVibrationCircle();
 
+        updateAlertCounters(true);
+
         const leadTime = data.lead_time_sec !== undefined ? Number(data.lead_time_sec).toFixed(1) : '0.0';
         const mwVal = data.magnitude_mw || (data.epicenter && data.epicenter.magnitude_mw) || 5.8;
         const mwFormatted = Number(mwVal).toFixed(1);
@@ -1287,9 +1359,6 @@
         icon.textContent = '🚨';
         status.textContent = `CONFIRMED SEISMIC ALERT DETECTED — MAGNITUDE Mw ${mwFormatted}`;
         subtext.textContent = `Multiple nearby nodes (≥3 within 15km) confirm seismic motion! Gutenberg-Richter Peak Displacement Engine estimates Magnitude Mw ${mwFormatted}. Triggering cluster warning: ${leadTime}s before S-Wave Arrival.`;
-        
-        confirmedAlertsToday++;
-        document.getElementById('statAlertsToday').textContent = confirmedAlertsToday;
 
         // Card 2 Update (Last Confirmed Alert)
         document.getElementById('card2Badge').className = 'badge badge-confirmed';
@@ -1323,6 +1392,8 @@
         if (activeSystemAlertState !== 'CONFIRMED_EARTHQUAKE_ALERT') {
           activeSystemAlertState = 'LOCAL_VIBRATION';
           if (alertAutoClearTimer) clearTimeout(alertAutoClearTimer);
+
+          updateAlertCounters(false);
 
           document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
           banner.className = 'alert-banner state-local';
