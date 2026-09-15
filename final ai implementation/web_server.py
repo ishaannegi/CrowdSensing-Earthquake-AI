@@ -107,9 +107,16 @@ class SSEHandler(http.server.SimpleHTTPRequestHandler):
 
         return super().do_GET()
 
+class ThreadedServer(http.server.ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        exc_type, _, _ = sys.exc_info()
+        if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            return
+        super().handle_error(request, client_address)
+
 def start_web_server():
     # Use ThreadingHTTPServer so SSE GET stream does NOT block POST /api/event API calls!
-    httpd = http.server.ThreadingHTTPServer(("", PORT), SSEHandler)
+    httpd = ThreadedServer(("", PORT), SSEHandler)
     print(f"==================================================")
     print(f"🖥️  LIVE CROWDSENSING WEB DASHBOARD SERVER")
     print(f"   Open Browser: http://127.0.0.1:{PORT}")

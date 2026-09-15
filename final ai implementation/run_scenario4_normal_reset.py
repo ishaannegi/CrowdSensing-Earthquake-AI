@@ -2,6 +2,11 @@ import os
 import sys
 import subprocess
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     sim_script = os.path.join(script_dir, "simulate_crowd.py")

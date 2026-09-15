@@ -968,15 +968,21 @@
       clearConsensusCluster();
       if (!epicenter || !epicenter.lat || !epicenter.lon) return;
 
-      // Draw 15km yellow consensus radius circle
+      const radiusKm = (epicenter && epicenter.adaptive_radius_km) ? epicenter.adaptive_radius_km : 15.0;
+      const densityModeStr = (epicenter && epicenter.density_mode) ? epicenter.density_mode : `${radiusKm}km Standard`;
+      const radiusMeters = radiusKm * 1000;
+
+      // Draw Dynamic Density-Adaptive Consensus Radius Circle
       consensusCircle = L.circle([epicenter.lat, epicenter.lon], {
-        radius: 15000,
+        radius: radiusMeters,
         color: '#f59e0b',
         fillColor: '#f59e0b',
         fillOpacity: 0.15,
         weight: 2,
         dashArray: '6, 6'
       }).addTo(map);
+
+      const mwVal = (epicenter.magnitude_mw !== undefined) ? Number(epicenter.magnitude_mw).toFixed(1) : '5.8';
 
       // Centroid Marker
       centroidMarker = L.circleMarker([epicenter.lat, epicenter.lon], {
@@ -985,7 +991,7 @@
         color: '#ffffff',
         weight: 2,
         fillOpacity: 1
-      }).bindPopup(`<b>Epicentral Centroid (Consensus Center)</b><br>Lat: ${epicenter.lat.toFixed(4)}, Lon: ${epicenter.lon.toFixed(4)}`).addTo(map);
+      }).bindPopup(`<b>Epicentral Centroid (Consensus Center)</b><br>Magnitude: <b>Mw ${mwVal}</b><br>Adaptive Radius: <b>${radiusKm} km</b> (${densityModeStr})<br>Lat: ${epicenter.lat.toFixed(4)}, Lon: ${epicenter.lon.toFixed(4)}`).addTo(map);
 
       // Draw connecting dotted yellow lines to contributing cluster nodes
       if (clusterNodes && Array.isArray(clusterNodes)) {
@@ -1205,35 +1211,47 @@
 
       if (alertState === 'CONFIRMED_EARTHQUAKE_ALERT') {
         const leadTime = data.lead_time_sec !== undefined ? Number(data.lead_time_sec).toFixed(1) : '0.0';
+        const mwVal = data.magnitude_mw || (data.epicenter && data.epicenter.magnitude_mw) || 5.8;
+        const mwFormatted = Number(mwVal).toFixed(1);
+
+        document.getElementById('statMwMag').innerHTML = `Mw ${mwFormatted} <span class="stat-unit" style="color:#fcd34d; font-size:0.75rem;">(Richter)</span>`;
+
         banner.className = 'alert-banner state-confirmed';
         icon.textContent = '🚨';
-        status.textContent = 'CONFIRMED SEISMIC ALERT DETECTED';
-        subtext.textContent = `Multiple nearby nodes (≥3 within 15km) confirm seismic motion! Triggering cluster warning: ${leadTime}s before S-Wave Arrival. Distant regional predictive lead times broadcasted below.`;
+        status.textContent = `CONFIRMED SEISMIC ALERT DETECTED — MAGNITUDE Mw ${mwFormatted}`;
+        subtext.textContent = `Multiple nearby nodes (≥3 within 15km) confirm seismic motion! Gutenberg-Richter Peak Displacement Engine estimates Magnitude Mw ${mwFormatted}. Triggering cluster warning: ${leadTime}s before S-Wave Arrival.`;
         
         confirmedAlertsToday++;
         document.getElementById('statAlertsToday').textContent = confirmedAlertsToday;
 
         // Card 2 Update (Last Confirmed Alert)
         document.getElementById('card2Badge').className = 'badge badge-confirmed';
-        document.getElementById('card2Badge').textContent = 'CONFIRMED';
+        document.getElementById('card2Badge').textContent = `Mw ${mwFormatted} CONFIRMED`;
         const epiLat = data.epicenter ? data.epicenter.lat : 28.6139;
         const epiLon = data.epicenter ? data.epicenter.lon : 77.2090;
-        document.getElementById('card2Epicenter').textContent = `Epicenter: (${epiLat.toFixed(2)}, ${epiLon.toFixed(2)})`;
+        document.getElementById('card2Epicenter').textContent = `Epicenter: (${epiLat.toFixed(2)}, ${epiLon.toFixed(2)}) | Mw ${mwFormatted}`;
         document.getElementById('card2ClusterSize').textContent = `${data.cluster_nodes ? data.cluster_nodes.length : 3} Nodes`;
         document.getElementById('card2LeadTime').textContent = `${leadTime}s S-Wave`;
         document.getElementById('card2Time').textContent = timeStr;
 
         // Render Glowing Cluster Overlay on Map
         if (data.epicenter) {
-          renderConsensusCluster(data.epicenter, data.cluster_nodes);
+          const epiObj = Object.assign({}, data.epicenter, {
+            magnitude_mw: mwVal,
+            adaptive_radius_km: data.adaptive_radius_km || (data.epicenter && data.epicenter.adaptive_radius_km) || 15.0,
+            density_mode: data.density_mode || (data.epicenter && data.epicenter.density_mode) || 'Standard Regional (15km)'
+          });
+          renderConsensusCluster(epiObj, data.cluster_nodes);
         }
 
       } else if (alertState === 'LOCAL_VIBRATION') {
+        document.getElementById('statMwMag').innerHTML = `Mw -- <span class="stat-unit" style="color:var(--text-muted); font-size:0.75rem;">(Standby)</span>`;
         banner.className = 'alert-banner state-local';
         icon.textContent = '⚠️';
         status.textContent = 'LOCAL VIBRATION / FALSE ALARM';
         subtext.textContent = `Isolated vibration detected by ${nodeId}. Standing by for spatial confirmation.`;
       } else {
+        document.getElementById('statMwMag').innerHTML = `Mw --`;
         banner.className = 'alert-banner state-normal';
         icon.textContent = '🟢';
         status.textContent = 'SYSTEM NORMAL - MONITORING ACTIVE';

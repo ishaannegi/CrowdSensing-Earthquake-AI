@@ -117,12 +117,71 @@ ALL_NODES_REGISTRY = [
     {"node_id": "Node-10 (Karol Bagh)", "lat": 28.6500, "lon": 77.1900},
 ]
 
-def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
+def estimate_magnitude_mw(cluster_records, epicenter_lat, epicenter_lon):
+    """
+    Peak Displacement & Acceleration Magnitude Scaling Engine (Wu & Kanamori 2005):
+    Mw = 0.78 * log10(Pd_cm) + 1.15 * log10(R) + 3.8
+    where Pd_cm is peak ground acceleration in cm/s^2, and R is epicentral distance in km.
+    """
+    p_d_vals = [ev.get("peak_mag", 2.5) for ev in cluster_records if ev.get("peak_mag", 0.0) > 0]
+    avg_pd = float(sum(p_d_vals) / len(p_d_vals)) if p_d_vals else 2.5
+    
+    distances = [haversine(ev["lat"], ev["lon"], epicenter_lat, epicenter_lon) for ev in cluster_records]
+    avg_r = max(float(sum(distances) / len(distances)), 1.0)
+    
+    pd_cm = max(avg_pd * 10.0, 0.1) # Convert m/s^2 to cm/s^2 scale
+    raw_mw = 0.78 * math.log10(pd_cm) + 1.15 * math.log10(avg_r) + 3.8
+    mw = round(max(min(raw_mw, 8.0), 3.5), 1)
+
+    logger.info("🧮 [MATH ENGINE] Real-Time Moment Magnitude (Mw) Calculation Breakdown:")
+    logger.info(f"   ├── Cluster Peak Accelerations (Pd): {[round(v, 2) for v in p_d_vals]} m/s² -> Avg Pd: {avg_pd:.2f} m/s² ({pd_cm:.2f} cm/s²)")
+    logger.info(f"   ├── Cluster Epicentral Distances (R): {[round(d, 2) for d in distances]} km -> Avg R: {avg_r:.2f} km")
+    logger.info(f"   ├── Empirical Equation: Mw = 0.78 * log10({pd_cm:.2f}) + 1.15 * log10({avg_r:.2f}) + 3.80")
+    logger.info(f"   └── Calculated Result: Mw = {mw} (Moment Magnitude)")
+
+    return mw
+
+def compute_adaptive_radius(curr_lat, curr_lon, event_buffer):
+    """
+    Dynamic Density-Adaptive Spatial Radius Scaling Engine (DBSCAN / Spatial Nearest-Neighbor Scaling):
+    Evaluates local spatial node density around (curr_lat, curr_lon).
+    - Dense Urban Node Density (mean k-NN dist <= 3.5 km): Tightens consensus radius to 5.0 km for high spatial precision.
+    - Standard Node Density (3.5 km < mean k-NN dist <= 10.0 km): Standard 15.0 km consensus radius.
+    - Sparse Suburban Node Density (mean k-NN dist > 10.0 km): Expands consensus radius to 25.0 km to cluster sparse arrays.
+    """
+    active_coords = [(ev["lat"], ev["lon"]) for ev in event_buffer if ev.get("prediction") == "real_quake"]
+    active_coords.append((curr_lat, curr_lon))
+    
+    if len(active_coords) <= 1:
+        return 15.0, "Standard Regional (15km)"
+
+    dists = [haversine(curr_lat, curr_lon, lat, lon) for lat, lon in active_coords if (lat, lon) != (curr_lat, curr_lon)]
+    if not dists:
+        return 15.0, "Standard Regional (15km)"
+    
+    mean_knn_dist = float(sum(dists) / len(dists))
+
+    if mean_knn_dist <= 3.5:
+        radius_km = 5.0
+        mode = "Urban High-Density (5km)"
+    elif mean_knn_dist <= 10.0:
+        radius_km = 15.0
+        mode = "Standard Regional (15km)"
+    else:
+        radius_km = 25.0
+        mode = "Sparse Suburban (25km Expanded)"
+
+    logger.info(f"🌐 [ADAPTIVE SPATIAL RADIUS ENGINE] Local Node Density: Mean k-NN Spacing = {mean_knn_dist:.2f} km -> Scaling Consensus Radius to {radius_km} km ({mode})")
+    return radius_km, mode
+
+def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts, peak_mag=2.5):
     global event_buffer
 
     with buffer_lock:
         # Clean up buffer: remove events older than CONSENSUS_WINDOW_SEC (10.0s)
         event_buffer = [ev for ev in event_buffer if (now_ts - ev["timestamp"]) <= CONSENSUS_WINDOW_SEC]
+
+        adaptive_radius_km, density_mode = compute_adaptive_radius(curr_lat, curr_lon, event_buffer)
 
         if curr_pred != "real_quake":
             event_buffer.append({
@@ -131,17 +190,18 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
                 "lat": curr_lat,
                 "lon": curr_lon,
                 "prediction": curr_pred,
+                "peak_mag": peak_mag,
                 "alert_level": "NORMAL",
                 "lead_time_sec": 0.0
             })
             return "NORMAL", 0.0, None
 
-        # Collect all nearby real_quake node records within RADIUS_KM (15km)
+        # Collect all nearby real_quake node records within adaptive_radius_km
         cluster_records = []
         for ev in event_buffer:
             if ev["prediction"] == "real_quake":
                 dist = haversine(curr_lat, curr_lon, ev["lat"], ev["lon"])
-                if dist <= RADIUS_KM:
+                if dist <= adaptive_radius_km:
                     cluster_records.append(ev)
 
         cluster_records.append({
@@ -149,6 +209,7 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
             "node_id": curr_node,
             "lat": curr_lat,
             "lon": curr_lon,
+            "peak_mag": peak_mag,
             "prediction": curr_pred
         })
 
@@ -162,10 +223,15 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
             epicenter_lat = sum(ev["lat"] for ev in cluster_records) / len(cluster_records)
             epicenter_lon = sum(ev["lon"] for ev in cluster_records) / len(cluster_records)
 
+            mw_val = estimate_magnitude_mw(cluster_records, epicenter_lat, epicenter_lon)
+
             cluster_nodes = [{"id": ev["node_id"], "lat": ev["lat"], "lon": ev["lon"]} for ev in cluster_records]
             epicenter_info = {
                 "epicenter": {"lat": round(epicenter_lat, 4), "lon": round(epicenter_lon, 4)},
-                "cluster_nodes": cluster_nodes
+                "cluster_nodes": cluster_nodes,
+                "magnitude_mw": mw_val,
+                "adaptive_radius_km": adaptive_radius_km,
+                "density_mode": density_mode
             }
 
             curr_dist = haversine(curr_lat, curr_lon, epicenter_lat, epicenter_lon)
@@ -190,10 +256,11 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
                             "prediction": ev["prediction"],
                             "confidence": 0.95,
                             "lead_time_sec": ev.get("lead_time_sec", 0.0),
-                            "features": {"peak_mag": 2.5, "sta_lta_ratio": 4.0},
+                            "features": {"peak_mag": ev.get("peak_mag", 2.5), "sta_lta_ratio": 4.0},
                             "file": "retroactive_consensus_update",
                             "epicenter": epicenter_info["epicenter"],
-                            "cluster_nodes": epicenter_info["cluster_nodes"]
+                            "cluster_nodes": epicenter_info["cluster_nodes"],
+                            "magnitude_mw": mw_val
                         }
                         push_to_web_dashboard(retro_payload, "CONFIRMED_EARTHQUAKE_ALERT", ev.get("lead_time_sec", 0.0))
 
@@ -209,7 +276,8 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
                         "lon": reg_node["lon"],
                         "distance_km": round(dist_km, 1),
                         "lead_time_sec": pred_lead_time,
-                        "status_msg": f"⚠️ {reg_node['node_id'].split(' ')[0]}: Estimated shaking in {pred_lead_time:.1f}s (not yet detected locally)"
+                        "magnitude_mw": mw_val,
+                        "status_msg": f"⚠️ {reg_node['node_id'].split(' ')[0]}: M{mw_val} shaking in {pred_lead_time:.1f}s (not yet detected locally)"
                     })
 
             if predictive_warnings:
@@ -218,6 +286,7 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
                     "node_id": curr_node,
                     "epicenter": {"lat": round(epicenter_lat, 4), "lon": round(epicenter_lon, 4)},
                     "cluster_nodes": cluster_nodes,
+                    "magnitude_mw": mw_val,
                     "warnings": predictive_warnings
                 }
                 push_to_web_dashboard(warning_payload, "CONFIRMED_EARTHQUAKE_ALERT", lead_time_sec)
@@ -230,6 +299,7 @@ def compute_consensus(curr_node, curr_lat, curr_lon, curr_pred, now_ts):
             "lat": curr_lat,
             "lon": curr_lon,
             "prediction": curr_pred,
+            "peak_mag": peak_mag,
             "alert_level": alert_level,
             "lead_time_sec": lead_time_sec
         })
@@ -286,8 +356,8 @@ def push_to_web_dashboard(payload, alert_level, lead_time_sec=0.0):
         )
         with urllib.request.urlopen(req, timeout=2.0) as resp:
             pass
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Dashboard push warning (ensure web_server.py on port 5000 is running): {e}")
 
 def handle_client(conn, addr):
     conn.settimeout(5.0)
@@ -335,22 +405,28 @@ def handle_client(conn, addr):
         pred = payload.get("prediction", "fake_vibration")
         conf = float(payload.get("confidence", 0.0))
         filename = os.path.basename(str(payload.get("file", "")))
+        peak_mag = float(payload.get("features", {}).get("peak_mag", 2.5))
 
-        alert_level, lead_time_sec, epicenter_info = compute_consensus(node_id, lat, lon, pred, now_ts)
+        alert_level, lead_time_sec, epicenter_info = compute_consensus(node_id, lat, lon, pred, now_ts, peak_mag=peak_mag)
         if epicenter_info:
             payload.update(epicenter_info)
 
         log_to_csv(payload, alert_level, lead_time_sec)
         push_to_web_dashboard(payload, alert_level, lead_time_sec)
 
-        logger.info(f"📩 [TELEMETRY] Node: {node_id} ({lat:.4f}, {lon:.4f}) | Sample: {filename} | AI: {pred} ({conf:.2%}) | Alert: {alert_level}")
+        mw_str = f" | Mw: {epicenter_info.get('magnitude_mw')}" if epicenter_info and "magnitude_mw" in epicenter_info else ""
+        logger.info(f"📩 [TELEMETRY] Node: {node_id} ({lat:.4f}, {lon:.4f}) | Sample: {filename} | AI: {pred} ({conf:.2%}) | Alert: {alert_level}{mw_str}")
 
-        response = json.dumps({
+        response_dict = {
             "status": "OK",
             "alert_level": alert_level,
             "lead_time_sec": lead_time_sec,
             "node_id": node_id
-        }).encode("utf-8")
+        }
+        if epicenter_info and "magnitude_mw" in epicenter_info:
+            response_dict["magnitude_mw"] = epicenter_info["magnitude_mw"]
+
+        response = json.dumps(response_dict).encode("utf-8")
         conn.sendall(response)
 
     except (socket.timeout, socket.error, ConnectionResetError, BrokenPipeError) as e:

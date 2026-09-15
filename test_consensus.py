@@ -85,5 +85,24 @@ class TestSpatialConsensusLogic(unittest.TestCase):
         self.assertEqual(detector.event_buffer[1]["alert_level"], "CONFIRMED_EARTHQUAKE_ALERT")
         self.assertGreater(detector.event_buffer[0]["lead_time_sec"], 0.0)
 
+    def test_adaptive_radius_scaling(self):
+        # 1. Test Urban Dense Cluster (Delhi CP < 3.5km mean spacing) -> 5.0 km radius
+        buf_urban = [
+            {"lat": 28.6139, "lon": 77.2090, "prediction": "real_quake"},
+            {"lat": 28.6200, "lon": 77.2200, "prediction": "real_quake"}
+        ]
+        r_urban, mode_urban = detector.compute_adaptive_radius(28.6250, 77.2150, buf_urban)
+        self.assertEqual(r_urban, 5.0)
+        self.assertIn("Urban High-Density", mode_urban)
+
+        # 2. Test Sparse Suburban Cluster (> 10.0km mean spacing) -> 25.0 km radius
+        buf_sparse = [
+            {"lat": 28.1000, "lon": 77.1000, "prediction": "real_quake"},
+            {"lat": 28.3500, "lon": 77.4000, "prediction": "real_quake"}
+        ]
+        r_sparse, mode_sparse = detector.compute_adaptive_radius(28.6000, 77.7000, buf_sparse)
+        self.assertEqual(r_sparse, 25.0)
+        self.assertIn("Sparse Suburban", mode_sparse)
+
 if __name__ == "__main__":
     unittest.main()

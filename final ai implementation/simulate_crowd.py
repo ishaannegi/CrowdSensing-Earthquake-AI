@@ -159,13 +159,27 @@ def run_scenario_1(gpath):
 def run_scenario_2(gpath):
     logger.info("--------------------------------------------------")
     logger.info("SCENARIO 2: Local Cluster Consensus (15km Radius Confirmed Alert)")
-    logger.info("  -> Node-1 (Delhi CP), Node-9 (CP East), Node-10 (Karol Bagh) within <5km radius detect quake concurrently!")
-    logger.info("  -> 3rd node crossing threshold retroactively updates earlier nodes to CONFIRMED_EARTHQUAKE_ALERT!")
+    logger.info("  -> Node-1 (Delhi CP), Node-9 (CP East), Node-10 (Karol Bagh) within <5km radius detect quake!")
+    logger.info("  -> Step-by-step presentation mode: 5s initial delay + 3s delay per node reading.")
     logger.info("--------------------------------------------------")
-    cluster_nodes = [NODES[0], NODES[8], NODES[9]]  # Node-1, Node-9, Node-10
+    logger.info("  ⏳ [STARTUP DELAY] Pausing 5 seconds before initiating Scenario 2 telemetry...")
+    time.sleep(5.0)
+
+    cluster_nodes = [NODES[0], NODES[8], NODES[9]]  # Node-1 (Delhi CP), Node-9 (CP East), Node-10 (Karol Bagh)
     node_files = [(node, gpath(f"real_quake_{i}.csv")) for i, node in enumerate(cluster_nodes)]
-    send_batch_concurrently(node_files, scenario=2)
-    logger.info("  ⏳ [PAUSE] Waiting 5 seconds to observe live dashboard state (CONFIRMED ALERT)...")
+
+    for idx, (node_info, csv_file) in enumerate(node_files):
+        logger.info(f"📡 [NODE {idx+1}/3] Transmitting seismic telemetry for {node_info['node_id']}...")
+        res = process_and_send(node_info, csv_file, scenario=2)
+        if res:
+            mw_info = f" | Mw {res.get('magnitude_mw')}" if res.get('magnitude_mw') else ""
+            logger.info(f"   [SERVER RESPONSE] Node: {res.get('node_id')} -> Alert: {res.get('alert_level')}{mw_info}")
+        
+        if idx < len(node_files) - 1:
+            logger.info(f"   ⏳ [STEP DELAY] Pausing 3 seconds before next node reading...")
+            time.sleep(3.0)
+
+    logger.info("  ⏳ [OBSERVATION PAUSE] Pausing 5 seconds to observe live confirmed alert dashboard state (CONFIRMED ALERT)...")
     time.sleep(5.0)
 
 def run_scenario_3(gpath):
